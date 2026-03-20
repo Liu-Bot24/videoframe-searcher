@@ -19,6 +19,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "download_format": "bv*+ba/b",
     "merge_output_format": "mp4",
     "extra_yt_dlp_args": "",
+    "preferred_quality": "auto",
 }
 
 
