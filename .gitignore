@@ -1,0 +1,7 @@
+DEVELOPMENT_LOG.md
+__pycache__/
+*.pyc
+logs/
+workspace/
+config/settings.json
+_refs/

@@ -1,0 +1,2 @@
+"""VideoFrame Searcher package."""
+
