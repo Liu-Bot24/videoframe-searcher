@@ -672,6 +672,30 @@ class MainWindow(QMainWindow):
                 border: none;
             }
 
+            #PlayerVideoHost {
+                background: #0D1117;
+                border: 1px solid #E2E8F0;
+                border-radius: 10px;
+            }
+
+            #PlayerSlider {
+                background: transparent;
+                border: none;
+            }
+
+            #PlayerSlider::groove:horizontal {
+                border: none;
+                height: 0px;
+            }
+
+            #PlayerSlider::handle:horizontal {
+                width: 12px;
+                height: 12px;
+                background: #0F172A;
+                border-radius: 6px;
+                margin: -4px 0;
+            }
+
             /* ===== Gallery ===== */
             #GalleryInfoLabel, #PageLabel {
                 color: #64748B;
@@ -1206,6 +1230,30 @@ class MainWindow(QMainWindow):
                 border: none;
             }
 
+            #PlayerVideoHost {
+                background: #010409;
+                border: 1px solid #30363D;
+                border-radius: 10px;
+            }
+
+            #PlayerSlider {
+                background: transparent;
+                border: none;
+            }
+
+            #PlayerSlider::groove:horizontal {
+                border: none;
+                height: 0px;
+            }
+
+            #PlayerSlider::handle:horizontal {
+                width: 12px;
+                height: 12px;
+                background: #38BDF8;
+                border-radius: 6px;
+                margin: -4px 0;
+            }
+
             /* ===== Gallery ===== */
             #GalleryInfoLabel, #PageLabel {
                 color: #94A3B8;
@@ -1563,21 +1611,14 @@ class MainWindow(QMainWindow):
         right_layout.setContentsMargins(14, 14, 14, 14)
         right_layout.setSpacing(12)
 
-        # Top toolbar with theme toggle
-        toolbar_layout = QHBoxLayout()
-        toolbar_layout.addStretch(1)
-
+        self.tabs = QTabWidget()
+        self.tabs.setObjectName("MainTabs")
         self.theme_toggle_btn = QPushButton("深色模式")
         self.theme_toggle_btn.setObjectName("ThemeToggleBtn")
         self._set_button_role(self.theme_toggle_btn, "secondary")
         self.theme_toggle_btn.setMaximumWidth(142)
         self.theme_toggle_btn.clicked.connect(self._on_theme_toggle_clicked)
-        toolbar_layout.addWidget(self.theme_toggle_btn)
-
-        right_layout.addLayout(toolbar_layout)
-
-        self.tabs = QTabWidget()
-        self.tabs.setObjectName("MainTabs")
+        self.tabs.setCornerWidget(self.theme_toggle_btn, Qt.Corner.TopRightCorner)
         right_layout.addWidget(self.tabs, 5)
 
         self.download_tab = self._build_download_tab()
@@ -1776,6 +1817,7 @@ class MainWindow(QMainWindow):
         progress_row.addWidget(self.player_play_button, 0)
 
         self.player_slider = MarkedSlider(Qt.Orientation.Horizontal)
+        self.player_slider.setObjectName("PlayerSlider")
         self.player_slider.setRange(0, 0)
         self.player_slider.sliderPressed.connect(self._on_player_slider_pressed)
         self.player_slider.sliderReleased.connect(self._on_player_slider_released)

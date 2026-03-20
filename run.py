@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import json
 import logging
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 from videoframe_searcher.logging_config import configure_logging
 
 
 ROOT_DIR = Path(__file__).resolve().parent
 REQUIREMENTS_FILE = ROOT_DIR / "requirements.txt"
+BOOTSTRAP_STATE_FILE = ROOT_DIR / ".bootstrap_state.json"
 LOGGER = logging.getLogger("videoframe_searcher.bootstrap")
 
 REQUIRED_IMPORTS = {
@@ -20,6 +24,7 @@ REQUIRED_IMPORTS = {
     "psutil": "psutil",
     "requests": "requests",
     "curl_cffi": "curl-cffi",
+    "unalix": "unalix",
 }
 
 
@@ -45,14 +50,113 @@ def _run_checked(command: list[str]) -> None:
         raise RuntimeError(f"命令执行失败：{' '.join(command)}")
 
 
+def _missing_imports() -> list[str]:
+    return [m for m in REQUIRED_IMPORTS if not _is_module_available(m)]
+
+
+def _requirements_hash() -> str:
+    if not REQUIREMENTS_FILE.exists():
+        return ""
+    digest = hashlib.sha256()
+    digest.update(REQUIREMENTS_FILE.read_bytes())
+    return digest.hexdigest()
+
+
+def _python_tag() -> str:
+    return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+
+
+def _load_bootstrap_state() -> dict[str, Any]:
+    if not BOOTSTRAP_STATE_FILE.exists():
+        return {}
+    try:
+        return json.loads(BOOTSTRAP_STATE_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _write_bootstrap_state(requirements_hash: str) -> None:
+    payload = {
+        "requirements_hash": requirements_hash,
+        "python_tag": _python_tag(),
+    }
+    try:
+        BOOTSTRAP_STATE_FILE.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        LOGGER.warning("写入依赖状态文件失败：%s", exc)
+
+
+def _ensure_pip_available() -> None:
+    probe = subprocess.run(
+        [sys.executable, "-m", "pip", "--version"],
+        cwd=str(ROOT_DIR),
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if probe.returncode == 0:
+        return
+    LOGGER.warning("pip 不可用，尝试执行 ensurepip ...")
+    _run_checked([sys.executable, "-m", "ensurepip", "--upgrade"])
+
+
 def install_missing_dependencies() -> None:
-    missing = [m for m in REQUIRED_IMPORTS if not _is_module_available(m)]
-    if missing and REQUIREMENTS_FILE.exists():
-        LOGGER.info("检测到缺失依赖：%s", ", ".join(missing))
-        print("Installing project dependencies...")
-        _run_checked([sys.executable, "-m", "pip", "install", "-r", str(REQUIREMENTS_FILE)])
-    elif missing:
+    missing_before = _missing_imports()
+    requirements_hash = _requirements_hash()
+    state = _load_bootstrap_state()
+    should_sync = bool(missing_before)
+    should_sync = should_sync or state.get("requirements_hash") != requirements_hash
+    should_sync = should_sync or state.get("python_tag") != _python_tag()
+
+    if missing_before and not REQUIREMENTS_FILE.exists():
         raise FileNotFoundError(f"缺少 requirements 文件：{REQUIREMENTS_FILE}")
+    if not should_sync:
+        LOGGER.info("依赖状态已是最新，跳过安装。")
+        return
+    if not REQUIREMENTS_FILE.exists():
+        raise FileNotFoundError(f"缺少 requirements 文件：{REQUIREMENTS_FILE}")
+
+    if missing_before:
+        LOGGER.info("检测到缺失依赖：%s", ", ".join(missing_before))
+    else:
+        LOGGER.info("检测到依赖或 Python 版本变化，执行依赖同步。")
+
+    print("Installing project dependencies...")
+    _ensure_pip_available()
+    _run_checked(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "-r",
+            str(REQUIREMENTS_FILE),
+        ]
+    )
+
+    missing_after = _missing_imports()
+    if missing_after:
+        raise RuntimeError(f"依赖安装后仍缺失：{', '.join(missing_after)}")
+    _write_bootstrap_state(requirements_hash)
+
+
+def ensure_runtime_components() -> None:
+    _run_checked([sys.executable, "-m", "yt_dlp", "--version"])
+    from imageio_ffmpeg import get_ffmpeg_exe
+
+    ffmpeg_path = Path(get_ffmpeg_exe())
+    if not ffmpeg_path.exists():
+        raise RuntimeError("FFmpeg 可执行文件不存在，初始化失败。")
+    LOGGER.info("FFmpeg 可执行文件：%s", ffmpeg_path)
+
+    import PySide6.QtMultimedia  # noqa: F401
+    import PySide6.QtMultimediaWidgets  # noqa: F401
 
 
 def main() -> int:
@@ -60,6 +164,7 @@ def main() -> int:
     LOGGER.info("应用启动")
     try:
         install_missing_dependencies()
+        ensure_runtime_components()
         from videoframe_searcher.main import main as app_main
 
         app_main()

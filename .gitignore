@@ -5,3 +5,19 @@ logs/
 workspace/
 config/settings.json
 _refs/
+.claude/
+
+# Timestamp-like temporary output folders at repo root (e.g. 20260320_123347)
+[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]_[0-9][0-9][0-9][0-9][0-9][0-9]/
+
+# Python tooling caches / virtual envs
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.bootstrap_state.json
