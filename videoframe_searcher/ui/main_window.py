@@ -275,6 +275,7 @@ class MainWindow(QMainWindow):
         self.gallery_grid = QGridLayout(self.gallery_container)
         self.gallery_grid.setContentsMargins(8, 8, 8, 8)
         self.gallery_grid.setSpacing(12)
+        self.gallery_grid.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         self.gallery_scroll.setWidget(self.gallery_container)
         layout.addWidget(self.gallery_scroll, 1)
 
@@ -748,7 +749,6 @@ class MainWindow(QMainWindow):
 
     def _handle_worker_error(self, traceback_text: str, on_error=None) -> None:
         self.logger.error("后台任务失败：\n%s", traceback_text)
-        self.append_log(traceback_text)
         if on_error:
             on_error(traceback_text)
             return
@@ -758,6 +758,8 @@ class MainWindow(QMainWindow):
             lines = [line.strip() for line in traceback_text.splitlines() if line.strip()]
             if lines:
                 summary = lines[-1]
+                if ": " in summary:
+                    summary = summary.split(": ", 1)[1]
 
         soft_errors = (
             "插件状态尚未同步",
@@ -767,8 +769,10 @@ class MainWindow(QMainWindow):
         )
         if any(token in summary for token in soft_errors):
             self.gallery_search_hint_label.setText(summary)
+            self.append_log(summary)
             return
 
+        self.append_log(summary)
         QMessageBox.critical(self, "执行失败", f"{summary}\n\n详细日志：{get_log_file()}")
 
     def append_log(self, message: str) -> None:
@@ -924,6 +928,25 @@ class MainWindow(QMainWindow):
         self.next_page_btn.setEnabled(total_pages > 0 and self.current_page < total_pages - 1)
         self._update_selection_labels()
 
+    def _build_cover_pixmap(self, source: QPixmap, width: int, height: int) -> QPixmap:
+        if source.isNull():
+            fallback = QPixmap(width, height)
+            fallback.fill(Qt.GlobalColor.lightGray)
+            return fallback
+        scaled = source.scaled(
+            width,
+            height,
+            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        if scaled.isNull():
+            fallback = QPixmap(width, height)
+            fallback.fill(Qt.GlobalColor.lightGray)
+            return fallback
+        x = max(0, (scaled.width() - width) // 2)
+        y = max(0, (scaled.height() - height) // 2)
+        return scaled.copy(x, y, width, height)
+
     def _build_thumb(self, image_path: str) -> QWidget:
         wrapper = QWidget()
         layout = QVBoxLayout(wrapper)
@@ -940,13 +963,8 @@ class MainWindow(QMainWindow):
         button.setPopupMode(QToolButton.ToolButtonPopupMode.DelayedPopup)
 
         pixmap = QPixmap(image_path)
-        if pixmap.isNull():
-            fallback = QPixmap(220, 124)
-            fallback.fill(Qt.GlobalColor.lightGray)
-            button.setIcon(QIcon(fallback))
-        else:
-            thumb = pixmap.scaled(220, 124, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            button.setIcon(QIcon(thumb))
+        thumb = self._build_cover_pixmap(pixmap, 220, 124)
+        button.setIcon(QIcon(thumb))
 
         button.toggled.connect(lambda checked, p=image_path: self._toggle_selected(p, checked))
         button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
