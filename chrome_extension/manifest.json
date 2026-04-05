@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "VFS Google Lens Uploader",
+  "name": "Local Lens Bridge",
   "version": "0.1.0",
-  "description": "Upload local frame via local bridge and run Google Lens in current Chrome session.",
+  "description": "Upload local images through a local bridge and run Google Lens in the current Chrome session.",
   "permissions": [
     "tabs",
     "scripting",
@@ -16,7 +16,7 @@
     "http://localhost/*"
   ],
   "action": {
-    "default_title": "VFS Lens Upload",
+    "default_title": "Local Lens Bridge",
     "default_popup": "popup.html"
   },
   "background": {

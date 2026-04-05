@@ -16,6 +16,7 @@ ROOT_DIR = Path(__file__).resolve().parent
 REQUIREMENTS_FILE = ROOT_DIR / "requirements.txt"
 BOOTSTRAP_STATE_FILE = ROOT_DIR / ".bootstrap_state.json"
 LOGGER = logging.getLogger("videoframe_searcher.bootstrap")
+MIN_PYTHON = (3, 11)
 
 REQUIRED_IMPORTS = {
     "PySide6": "PySide6",
@@ -52,6 +53,18 @@ def _run_checked(command: list[str]) -> None:
 
 def _missing_imports() -> list[str]:
     return [m for m in REQUIRED_IMPORTS if not _is_module_available(m)]
+
+
+def _ensure_supported_python_version() -> None:
+    current = sys.version_info[:3]
+    if current[:2] >= MIN_PYTHON:
+        return
+    version_text = ".".join(str(part) for part in current)
+    required_text = ".".join(str(part) for part in MIN_PYTHON)
+    raise RuntimeError(
+        f"需要 Python {required_text}+，当前解释器为 {version_text}。"
+        " macOS 请优先运行 start.command，Windows 请运行 start.bat。"
+    )
 
 
 def _requirements_hash() -> str:
@@ -163,6 +176,7 @@ def main() -> int:
     log_file = configure_logging(ROOT_DIR)
     LOGGER.info("应用启动")
     try:
+        _ensure_supported_python_version()
         install_missing_dependencies()
         ensure_runtime_components()
         from videoframe_searcher.main import main as app_main

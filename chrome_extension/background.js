@@ -1,6 +1,8 @@
 const BRIDGE_BASE_CANDIDATES = ["http://127.0.0.1:38999", "http://localhost:38999"];
 const ENABLED_KEY = "vfs_plugin_enabled";
 const GOOGLE_HOME_URL = "https://www.google.com/?hl=zh-CN";
+const GOOGLE_LENS_HOME_URL = "https://lens.google.com/";
+const GOOGLE_LENS_UPLOAD_URL = "https://lens.google.com/upload";
 const HEARTBEAT_ALARM = "vfs_bridge_heartbeat";
 
 const BOT_MARKERS = ["google.com/sorry", "unusual traffic", "异常流量", "異常流量"];
@@ -19,6 +21,27 @@ function delay(ms) {
 function isGooglePage(url) {
   const text = String(url || "").toLowerCase();
   return text.startsWith("https://www.google.") || text.startsWith("https://lens.google.");
+}
+
+async function createTabWithWindowFallback(url, active) {
+  try {
+    const tab = await chrome.tabs.create({ url, active: Boolean(active) });
+    if (!tab || !tab.id) {
+      throw new Error("创建标签页失败");
+    }
+    return tab.id;
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    if (!message.includes("No current window")) {
+      throw error;
+    }
+    const createdWindow = await chrome.windows.create({ url, focused: true, type: "normal" });
+    const firstTab = createdWindow && createdWindow.tabs && createdWindow.tabs[0];
+    if (!firstTab || !firstTab.id) {
+      throw new Error("创建浏览器窗口失败");
+    }
+    return firstTab.id;
+  }
 }
 
 async function bridgeRequest(path, options = {}) {
@@ -155,9 +178,15 @@ async function waitForTabComplete(tabId, timeoutMs = 20000) {
 }
 
 async function createGoogleTab(active) {
-  const tab = await chrome.tabs.create({ url: GOOGLE_HOME_URL, active: Boolean(active) });
+  const tabId = await createTabWithWindowFallback(GOOGLE_HOME_URL, active);
+  await waitForTabComplete(tabId, 20000).catch(() => {});
+  return tabId;
+}
+
+async function navigateTab(tabId, url) {
+  const tab = await chrome.tabs.update(tabId, { url });
   if (!tab || !tab.id) {
-    throw new Error("创建 Google 标签页失败");
+    throw new Error("更新目标标签页失败");
   }
   await waitForTabComplete(tab.id, 20000).catch(() => {});
   return tab.id;
@@ -201,18 +230,26 @@ async function injectUpload(tabId, frame) {
         if (!input) {
           const lensTriggers = [
             "div[data-base-lens-url]",
+            "a[aria-label*='搜索图片']",
+            "a[aria-label*='Search images']",
+            "a[href*='/imghp']",
             "button[aria-label*='Google Lens']",
-            "button[aria-label*='Lens']"
+            "button[aria-label*='Lens']",
+            "[role='button'][aria-label*='Lens']"
           ];
           for (const selector of lensTriggers) {
             const trigger = document.querySelector(selector);
             if (trigger) {
               trigger.click();
-              await sleep(800);
-              break;
+              for (let i = 0; i < 12; i += 1) {
+                await sleep(400);
+                input = document.querySelector("input[type='file'][name='encoded_image']");
+                if (input) {
+                  return input;
+                }
+              }
             }
           }
-          input = document.querySelector("input[type='file'][name='encoded_image']");
         }
         if (!input) {
           input = document.querySelector("input[type='file']");
@@ -242,6 +279,77 @@ async function injectUpload(tabId, frame) {
   }
 }
 
+async function submitViaDirectLensForm(tabId, frame) {
+  const fileName = frame.file_name || "frame.jpg";
+  const mimeType = frame.mime_type || "image/jpeg";
+  const base64Data = frame.base64_data;
+  let results = null;
+  try {
+    results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: async (name, mime, b64, uploadUrl) => {
+        function decodeBase64ToBytes(base64) {
+          const raw = atob(base64);
+          const bytes = new Uint8Array(raw.length);
+          for (let i = 0; i < raw.length; i += 1) {
+            bytes[i] = raw.charCodeAt(i);
+          }
+          return bytes;
+        }
+
+        const existing = document.getElementById("vfs-direct-upload-form");
+        if (existing) {
+          existing.remove();
+        }
+
+        const form = document.createElement("form");
+        form.id = "vfs-direct-upload-form";
+        form.method = "POST";
+        form.action = uploadUrl;
+        form.enctype = "multipart/form-data";
+        form.style.display = "none";
+
+        const input = document.createElement("input");
+        input.type = "file";
+        input.name = "encoded_image";
+        input.accept = "image/*";
+
+        const bytes = decodeBase64ToBytes(b64);
+        const file = new File([bytes], name, { type: mime });
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+
+        form.appendChild(input);
+        document.body.appendChild(form);
+        form.submit();
+        return { ok: true };
+      },
+      args: [fileName, mimeType, base64Data, GOOGLE_LENS_UPLOAD_URL]
+    });
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    if (message.includes("Frame with ID 0 was removed.")) {
+      return;
+    }
+    throw error;
+  }
+  const first = results && results.length > 0 ? results[0].result : null;
+  if (!first || !first.ok) {
+    throw new Error((first && first.error) || "直传 Google Lens 失败");
+  }
+}
+
+async function uploadFrame(tabId, task) {
+  const currentTab = await chrome.tabs.get(tabId).catch(() => null);
+  const currentUrl = (currentTab && currentTab.url) || "";
+  if (!String(currentUrl).toLowerCase().startsWith("https://lens.google.")) {
+    await navigateTab(tabId, GOOGLE_LENS_HOME_URL);
+    await delay(800);
+  }
+  await submitViaDirectLensForm(tabId, task);
+}
+
 async function waitForLanding(tabId, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   let latestUrl = "";
@@ -249,7 +357,11 @@ async function waitForLanding(tabId, timeoutMs) {
     const tab = await chrome.tabs.get(tabId);
     latestUrl = tab.url || latestUrl;
     const lower = latestUrl.toLowerCase();
-    if (lower.includes("/search?") || lower.includes("google.com/sorry")) {
+    if (
+      lower.includes("/search?") ||
+      lower.includes("lens.google.com/search") ||
+      lower.includes("google.com/sorry")
+    ) {
       break;
     }
     await delay(1000);
@@ -289,7 +401,7 @@ async function processNextTask(triggerTabId) {
         first = false;
         preferTabId = null;
         await delay(700);
-        await injectUpload(tabId, task);
+        await uploadFrame(tabId, task);
         const url = await waitForLanding(tabId, 30000);
         const text = await readPageText(tabId);
         const status = detectStatus(url, text);

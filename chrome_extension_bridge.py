@@ -15,9 +15,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parent
 LOG_DIR = ROOT_DIR / "logs"
 LOG_FILE = LOG_DIR / "chrome_extension_bridge.log"
-DEFAULT_IMAGE_PATH = Path(
-    r"D:\work\Claude Code\VideoFrame Searcher\workspace\20260320_123347_#渣男探花_#探花系列_三好学生，团支书\screenshots\frame_00010.jpg"
-)
+DEFAULT_IMAGE_PATH: Path | None = None
 
 
 def _bj_now() -> str:
@@ -80,7 +78,7 @@ def _read_json_body(handler: BaseHTTPRequestHandler) -> dict:
 
 
 class BridgeState:
-    def __init__(self, fallback_image: Path) -> None:
+    def __init__(self, fallback_image: Path | None) -> None:
         self._lock = threading.Lock()
         self._fallback_image = fallback_image
         self._tasks: list[dict] = []
@@ -118,7 +116,12 @@ class BridgeState:
             return self._status_unlocked()
 
     def queue_search(self, image_path_raw: str | None) -> dict:
-        image_path = Path(image_path_raw).expanduser().resolve() if image_path_raw else self._fallback_image
+        if image_path_raw:
+            image_path = Path(image_path_raw).expanduser().resolve()
+        elif self._fallback_image is not None:
+            image_path = self._fallback_image
+        else:
+            raise RuntimeError("未提供图片路径，且桥接服务未配置固定图片。")
         payload = _read_image_as_payload(image_path)
         task = {
             "task_id": uuid.uuid4().hex,
@@ -149,11 +152,18 @@ class BridgeState:
                 "task_id": payload.get("task_id", ""),
                 "note": payload.get("note", ""),
             }
+            _log(
+                "[result] "
+                f"task_id={self._last_result['task_id']} "
+                f"status={self._last_result['status']} "
+                f"note={self._last_result['note']} "
+                f"url={self._last_result['url']}"
+            )
             return {"ok": True}
 
 
 class _BridgeHandler(BaseHTTPRequestHandler):
-    image_path: Path = DEFAULT_IMAGE_PATH
+    image_path: Path | None = DEFAULT_IMAGE_PATH
     state = BridgeState(DEFAULT_IMAGE_PATH)
 
     def log_message(self, format: str, *args) -> None:  # noqa: A003
@@ -171,7 +181,7 @@ class _BridgeHandler(BaseHTTPRequestHandler):
                     "ok": True,
                     "service": "chrome_extension_bridge",
                     "time": _bj_now(),
-                    "image_path": str(self.image_path),
+                    "image_path": str(self.image_path) if self.image_path else "",
                 },
             )
             return
@@ -181,6 +191,9 @@ class _BridgeHandler(BaseHTTPRequestHandler):
             return
 
         if self.path.startswith("/frame"):
+            if self.image_path is None:
+                _json_response(self, 400, {"ok": False, "error": "未配置固定图片。"})
+                return
             try:
                 frame = _read_image_as_payload(self.image_path)
             except Exception as exc:
@@ -240,7 +253,7 @@ def main() -> int:
     parser.add_argument(
         "--image",
         default="",
-        help="固定图片路径，不传则使用内置默认路径",
+        help="固定图片路径；不传则仅处理显式传入的队列任务",
     )
     args = parser.parse_args()
 
@@ -251,8 +264,8 @@ def main() -> int:
     _log("=" * 72)
     _log("启动 Chrome 扩展桥接服务")
     _log(f"监听地址：http://{args.host}:{args.port}")
-    _log(f"固定图片：{image_path}")
-    if not image_path.exists():
+    _log(f"固定图片：{image_path if image_path else '未设置'}")
+    if image_path is not None and not image_path.exists():
         _log("警告：固定图片不存在，/frame 将返回错误。")
 
     server = ThreadingHTTPServer((args.host, args.port), _BridgeHandler)

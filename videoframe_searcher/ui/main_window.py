@@ -78,7 +78,9 @@ def _duration_text(seconds: Any) -> str:
 
 
 ASSETS_DIR = Path(__file__).resolve().parents[1] / "assets"
-APP_ICON_PATH = ASSETS_DIR / "app_icon.ico"
+APP_ICON_PATH = ASSETS_DIR / ("app_icon.ico" if sys.platform.startswith("win") else "app_icon.png")
+if not APP_ICON_PATH.exists():
+    APP_ICON_PATH = ASSETS_DIR / ("app_icon.png" if APP_ICON_PATH.suffix == ".ico" else "app_icon.ico")
 CHEVRON_DARK_ICON_PATH = ASSETS_DIR / "chevron_down_dark.png"
 CHEVRON_LIGHT_ICON_PATH = ASSETS_DIR / "chevron_down_light.png"
 SPIN_UP_DARK_ICON_PATH = ASSETS_DIR / "spin_up_dark.png"

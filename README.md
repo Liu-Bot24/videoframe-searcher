@@ -6,11 +6,11 @@ Languages: [简体中文](README.md) · [English](README-en.md)
 
 </div>
 
-VideoFrame Searcher 是一个 Windows 桌面工具，用于从在线视频或本地视频中快速提取截图，并组织后续检索流程。
+VideoFrame Searcher 是一个桌面工具，用于从在线视频或本地视频中快速提取截图，并把抽帧、管理与后续以图搜图串成一条顺手的工作流。当前支持 Windows 和 macOS。
 
 ## 系统要求
 
-- 操作系统：Windows 10/11
+- 操作系统：Windows 10/11、macOS
 - Python：3.11+
 - 浏览器：Chrome（仅“以图搜图”功能需要）
 
@@ -18,12 +18,16 @@ VideoFrame Searcher 是一个 Windows 桌面工具，用于从在线视频或本
 
 ### 一键启动（推荐）
 
-双击根目录 `start.bat`：
+首次启动脚本会自动创建虚拟环境、安装依赖并启动程序。
 
-1. 检测 Python
-2. 创建 `.venv`
-3. 安装依赖
-4. 启动程序
+- Windows：双击根目录 `start.bat`
+- macOS：双击根目录 `start.command`
+
+如果 macOS 提示没有执行权限，可先运行：
+
+```bash
+chmod +x start.command
+```
 
 ### 命令行启动
 
@@ -54,6 +58,8 @@ python run.py
 
 桥接地址：`http://127.0.0.1:38999`
 
+说明：macOS 下“以图搜图”会优先拉起 Google Chrome；如果你使用的是其他 Chromium 浏览器，请先确认扩展也已加载到对应浏览器。
+
 ## 使用流程
 
 1. 在“采集工作台”输入视频 URL，点击“解析元数据”
@@ -73,22 +79,6 @@ python run.py
 - 合并输出格式
 - yt-dlp 额外参数
 - yt-dlp 强制更新
-
-## 目录结构
-
-```text
-.
-├─ start.bat
-├─ run.py
-├─ chrome_extension/
-├─ videoframe_searcher/
-├─ workspace/                  # 项目工作目录
-├─ logs/
-│  ├─ app.log
-│  ├─ launcher.log
-│  └─ chrome_extension_bridge.log
-└─ config/settings.json
-```
 
 ## 常见问题
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import time
 import webbrowser
 from pathlib import Path
@@ -64,6 +66,25 @@ class PluginSearchService:
             "插件状态尚未同步，请打开 Chrome 插件弹窗并确认已开启，再重试一次。"
         )
 
+    def _open_google_home(self) -> None:
+        url = "https://www.google.com/?hl=zh-CN"
+        if sys.platform == "darwin":
+            for app_name in ("Google Chrome", "Chromium", "Microsoft Edge", "Brave Browser"):
+                try:
+                    result = subprocess.run(
+                        ["open", "-a", app_name, url],
+                        check=False,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                except OSError:
+                    continue
+                if result.returncode == 0:
+                    return
+            raise RuntimeError("macOS 未找到可用于插件联动的 Chromium 浏览器，请先安装并打开 Google Chrome。")
+        if not webbrowser.open(url):
+            raise RuntimeError("无法自动打开浏览器，请手动打开 Google Lens 页面后重试。")
+
     def queue_search_many(self, image_paths: list[str | Path], progress_callback: ProgressCallback = None) -> dict:
         targets: list[Path] = []
         for raw in image_paths:
@@ -94,8 +115,8 @@ class PluginSearchService:
             task_ids.append(str(result.get("task_id") or ""))
             pending_count = int(result.get("pending_count") or pending_count)
 
-        webbrowser.open("https://www.google.com/?hl=zh-CN")
-        self._emit(progress_callback, "已触发 Chrome 打开 Google 页面，插件将自动执行队列搜索。")
+        self._open_google_home()
+        self._emit(progress_callback, "已触发浏览器打开 Google Lens 页面，插件将自动执行队列搜索。")
         return {"ok": True, "queued_count": total, "pending_count": pending_count, "task_ids": task_ids}
 
     def queue_search(self, image_path: str | Path, progress_callback: ProgressCallback = None) -> dict:

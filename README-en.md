@@ -6,11 +6,11 @@ Languages: [简体中文](README.md) · [English](README-en.md)
 
 </div>
 
-VideoFrame Searcher is a Windows desktop tool used to quickly extract screenshots from online or local videos and organize subsequent search processes.
+VideoFrame Searcher is a desktop tool for quickly extracting frames from online or local videos, managing the results, and continuing into reverse-image-search workflows. It currently supports Windows and macOS.
 
 ## System Requirements
 
-- Operating System: Windows 10/11
+- Operating System: Windows 10/11, macOS
 - Python: 3.11+
 - Browser: Chrome (required only for the "Search by Image" feature)
 
@@ -18,12 +18,16 @@ VideoFrame Searcher is a Windows desktop tool used to quickly extract screenshot
 
 ### One-Click Startup (Recommended)
 
-Double-click `start.bat` in the root directory:
+The startup script will create a virtual environment, install dependencies, and launch the app on first run.
 
-1. Detects Python
-2. Creates `.venv`
-3. Installs dependencies
-4. Starts the program
+- Windows: double-click `start.bat`
+- macOS: double-click `start.command`
+
+If macOS reports that the script is not executable, run:
+
+```bash
+chmod +x start.command
+```
 
 ### Command Line Startup
 
@@ -54,6 +58,8 @@ python run.py
 
 Bridge Address: `http://127.0.0.1:38999`
 
+Note: On macOS, the app will try to open Google Chrome first for the reverse-image-search workflow. If you use another Chromium-based browser, make sure the unpacked extension is loaded there as well.
+
 ## Usage Workflow
 
 1. Enter the video URL in the "Collection Workbench" and click "Parse Metadata".
@@ -73,22 +79,6 @@ The settings page supports the following configurations:
 - Merge output format
 - yt-dlp extra parameters
 - yt-dlp force update
-
-## Directory Structure
-
-```text
-.
-├─ start.bat
-├─ run.py
-├─ chrome_extension/
-├─ videoframe_searcher/
-├─ workspace/                  # Project workspace directory
-├─ logs/
-│  ├─ app.log
-│  ├─ launcher.log
-│  └─ chrome_extension_bridge.log
-└─ config/settings.json
-```
 
 ## FAQ
 
