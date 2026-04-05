@@ -1,2 +1,1 @@
-"""VideoFrame Searcher package."""
-
+"""Image Search Gallery package."""

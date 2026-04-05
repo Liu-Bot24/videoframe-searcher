@@ -20,12 +20,8 @@ MIN_PYTHON = (3, 11)
 
 REQUIRED_IMPORTS = {
     "PySide6": "PySide6",
-    "yt_dlp": "yt-dlp",
-    "imageio_ffmpeg": "imageio-ffmpeg",
     "psutil": "psutil",
     "requests": "requests",
-    "curl_cffi": "curl-cffi",
-    "unalix": "unalix",
 }
 
 
@@ -160,16 +156,7 @@ def install_missing_dependencies() -> None:
 
 
 def ensure_runtime_components() -> None:
-    _run_checked([sys.executable, "-m", "yt_dlp", "--version"])
-    from imageio_ffmpeg import get_ffmpeg_exe
-
-    ffmpeg_path = Path(get_ffmpeg_exe())
-    if not ffmpeg_path.exists():
-        raise RuntimeError("FFmpeg 可执行文件不存在，初始化失败。")
-    LOGGER.info("FFmpeg 可执行文件：%s", ffmpeg_path)
-
-    import PySide6.QtMultimedia  # noqa: F401
-    import PySide6.QtMultimediaWidgets  # noqa: F401
+    import PySide6.QtWidgets  # noqa: F401
 
 
 def main() -> int:

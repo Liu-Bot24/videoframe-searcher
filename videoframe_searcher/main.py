@@ -26,7 +26,7 @@ def main() -> None:
     logger = logging.getLogger("videoframe_searcher.main")
     logger.info("正在初始化 Qt 应用")
     app = QApplication(sys.argv)
-    app.setApplicationName("VideoFrame Searcher")
+    app.setApplicationName("Image Search Gallery")
     icon_path = _resolve_app_icon_path()
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))

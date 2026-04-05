@@ -67,7 +67,7 @@ class PluginSearchService:
         )
 
     def _open_google_home(self) -> None:
-        url = "https://www.google.com/?hl=zh-CN"
+        url = "https://lens.google.com/"
         if sys.platform == "darwin":
             for app_name in ("Google Chrome", "Chromium", "Microsoft Edge", "Brave Browser"):
                 try:
