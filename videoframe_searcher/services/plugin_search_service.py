@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
 import time
 import webbrowser
 from pathlib import Path
@@ -39,6 +40,19 @@ class PluginSearchService:
         if not isinstance(data, dict):
             raise RuntimeError("桥接服务返回格式错误。")
         return data
+
+    def clear_queue(self, progress_callback: ProgressCallback = None) -> dict:
+        self._emit(progress_callback, "正在清空桥接队列...")
+        try:
+            result = self._post_json("/clear-queue", {})
+        except requests.RequestException as exc:
+            raise RuntimeError("无法连接本地桥接服务，当前没有可清空的搜索队列。") from exc
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("桥接服务返回了非法 JSON。") from exc
+
+        if not result.get("ok", False):
+            raise RuntimeError(str(result.get("error") or "清空桥接队列失败。"))
+        return result
 
     def _ensure_plugin_enabled(self) -> dict:
         for _ in range(7):
@@ -85,7 +99,12 @@ class PluginSearchService:
         if not webbrowser.open(url):
             raise RuntimeError("无法自动打开浏览器，请手动打开 Google Lens 页面后重试。")
 
-    def queue_search_many(self, image_paths: list[str | Path], progress_callback: ProgressCallback = None) -> dict:
+    def queue_search_many(
+        self,
+        image_paths: list[str | Path],
+        progress_callback: ProgressCallback = None,
+        cancel_event: threading.Event | None = None,
+    ) -> dict:
         targets: list[Path] = []
         for raw in image_paths:
             target = Path(raw).resolve()
@@ -102,7 +121,12 @@ class PluginSearchService:
         task_ids: list[str] = []
         pending_count = 0
         total = len(targets)
+        cancelled = False
         for idx, target in enumerate(targets, start=1):
+            if cancel_event and cancel_event.is_set():
+                self._emit(progress_callback, "队列提交已取消。")
+                cancelled = True
+                break
             self._emit(progress_callback, f"提交搜索任务 {idx}/{total}：{target.name}")
             try:
                 result = self._post_json("/queue", {"image_path": str(target)})
@@ -115,9 +139,18 @@ class PluginSearchService:
             task_ids.append(str(result.get("task_id") or ""))
             pending_count = int(result.get("pending_count") or pending_count)
 
+        if not task_ids:
+            return {"ok": True, "queued_count": 0, "pending_count": pending_count, "task_ids": [], "cancelled": True}
+
         self._open_google_home()
         self._emit(progress_callback, "已触发浏览器打开 Google Lens 页面，插件将自动执行队列搜索。")
-        return {"ok": True, "queued_count": total, "pending_count": pending_count, "task_ids": task_ids}
+        return {
+            "ok": True,
+            "queued_count": len(task_ids),
+            "pending_count": pending_count,
+            "task_ids": task_ids,
+            "cancelled": cancelled,
+        }
 
     def queue_search(self, image_path: str | Path, progress_callback: ProgressCallback = None) -> dict:
         return self.queue_search_many([image_path], progress_callback)

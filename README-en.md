@@ -1,12 +1,12 @@
 <div align="center">
 
-# Image Search Gallery
+# Image Search Gallery | Batch Reverse Image Search
 
 Languages: [简体中文](README.md) · [English](README-en.md)
 
 </div>
 
-Image Search Gallery is a lightweight desktop app for collecting local images into a gallery and sending them in batches to a browser-based reverse-image-search workflow. It keeps the original bridge and Chrome extension integration, while removing the video download, playback, and frame extraction flow.
+Image Search Gallery is a lightweight desktop app built around one core workflow: organizing local images into a gallery and sending them to the browser for batch reverse image search. It keeps the proven local bridge and Chrome extension integration from the original project, while removing the video download, playback, and frame extraction flow to stay focused on batch reverse image search.
 
 ## System Requirements
 
@@ -29,7 +29,8 @@ chmod +x start.command
 
 ## What You Can Do
 
-- Image gallery: browse imported images and batch-select them for search
+- Batch reverse image search: queue multiple gallery images and send them to the browser in one run
+- Image gallery: browse imported images and quickly organize what should be searched
 - Drag-and-drop import: drop images directly into the window
 - File import: copy local images into the managed gallery
 - Open gallery folder: manage the gallery with Finder / Explorer

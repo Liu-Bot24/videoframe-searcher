@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import threading
 import traceback
 from typing import Any, Callable
 
@@ -21,6 +22,10 @@ class Worker(QRunnable):
         self.args = args
         self.kwargs = kwargs
         self.signals = WorkerSignals()
+        self.cancel_event = threading.Event()
+
+    def cancel(self) -> None:
+        self.cancel_event.set()
 
     @Slot()
     def run(self) -> None:
@@ -29,6 +34,8 @@ class Worker(QRunnable):
             signature = inspect.signature(self.fn)
             if "progress_callback" in signature.parameters:
                 call_kwargs["progress_callback"] = self.signals.progress.emit
+            if "cancel_event" in signature.parameters:
+                call_kwargs["cancel_event"] = self.cancel_event
             result = self.fn(*self.args, **call_kwargs)
             self.signals.result.emit(result)
         except Exception:

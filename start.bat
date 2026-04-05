@@ -5,14 +5,26 @@ cd /d "%~dp0"
 
 if not exist "%~dp0logs" mkdir "%~dp0logs"
 set "LAUNCH_LOG=%~dp0logs\launcher.log"
-set "VENV_PY=%~dp0.venv\Scripts\python.exe"
+set "VENV_DIR=%~dp0.venv"
+set "VENV_PY=%VENV_DIR%\Scripts\python.exe"
 set "SYS_PY="
 
 echo [%date% %time%] Launcher started.>>"%LAUNCH_LOG%"
 
 if exist "%VENV_PY%" (
-    echo [%date% %time%] Use existing virtualenv Python: %VENV_PY%>>"%LAUNCH_LOG%"
-    goto :launch
+    call :version_supported "%VENV_PY%"
+    if not errorlevel 1 (
+        echo [%date% %time%] Use existing virtualenv Python: %VENV_PY%>>"%LAUNCH_LOG%"
+        goto :launch
+    )
+    echo [%date% %time%] Existing virtualenv Python is below 3.11, recreating .venv.>>"%LAUNCH_LOG%"
+    call :reset_venv
+    if exist "%VENV_DIR%" (
+        echo [%date% %time%] ERROR: failed to remove outdated virtualenv.>>"%LAUNCH_LOG%"
+        echo [ERROR] Failed to recreate .venv. Please close programs using it and try again.
+        pause
+        exit /b 9012
+    )
 )
 
 call :resolve_python
@@ -78,21 +90,33 @@ goto :scan_python
 
 :try_py_launcher
 for /f "delims=" %%I in ('py -3 -c "import sys; print(sys.executable)" 2^>nul') do (
-    echo %%I | find /I "WindowsApps" >nul
-    if errorlevel 1 (
-        set "SYS_PY=%%I"
-        goto :eof
-    )
+    call :accept_python "%%I"
+    if defined SYS_PY goto :eof
 )
 
 :scan_python
 for /f "delims=" %%I in ('where python 2^>nul') do (
-    echo %%I | find /I "WindowsApps" >nul
-    if errorlevel 1 (
-        set "SYS_PY=%%I"
-        goto :eof
-    )
+    call :accept_python "%%I"
+    if defined SYS_PY goto :eof
 )
+goto :eof
+
+:accept_python
+set "CANDIDATE=%~1"
+if not defined CANDIDATE goto :eof
+echo %CANDIDATE% | find /I "WindowsApps" >nul
+if not errorlevel 1 goto :eof
+call :version_supported "%CANDIDATE%"
+if errorlevel 1 goto :eof
+set "SYS_PY=%CANDIDATE%"
+goto :eof
+
+:version_supported
+"%~1" -c "import sys; sys.exit(0 if sys.version_info[:2] >= (3, 11) else 1)" >nul 2>nul
+exit /b %ERRORLEVEL%
+
+:reset_venv
+if exist "%VENV_DIR%" rmdir /s /q "%VENV_DIR%"
 goto :eof
 
 :try_install_python

@@ -161,6 +161,14 @@ class BridgeState:
             )
             return {"ok": True}
 
+    def clear_queue(self) -> dict:
+        with self._lock:
+            cleared_count = len(self._tasks)
+            self._tasks.clear()
+            pending_count = len(self._tasks)
+        _log(f"[queue] 清空剩余任务 cleared={cleared_count}")
+        return {"ok": True, "cleared_count": cleared_count, "pending_count": pending_count}
+
 
 class _BridgeHandler(BaseHTTPRequestHandler):
     image_path: Path | None = DEFAULT_IMAGE_PATH
@@ -237,6 +245,10 @@ class _BridgeHandler(BaseHTTPRequestHandler):
 
         if self.path == "/next-task":
             _json_response(self, 200, self.state.next_task())
+            return
+
+        if self.path == "/clear-queue":
+            _json_response(self, 200, self.state.clear_queue())
             return
 
         if self.path == "/task-result":

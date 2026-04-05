@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -68,6 +69,7 @@ class MainWindow(QMainWindow):
         self.page_size = 60
         self._gallery_last_column_count = 0
         self._current_theme = "light"
+        self._active_search_worker: Worker | None = None
 
         self._build_ui()
         self._gallery_relayout_timer = QTimer(self)
@@ -264,6 +266,14 @@ class MainWindow(QMainWindow):
         self.search_button.setMinimumWidth(108)
         self.search_button.setMaximumWidth(128)
         search_row.addWidget(self.search_button, 0)
+        self.clear_queue_button = QToolButton()
+        self.clear_queue_button.setObjectName("QueueClearButton")
+        self.clear_queue_button.setText("🧹")
+        self.clear_queue_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.clear_queue_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.clear_queue_button.setToolTip("清空尚未开始的搜索队列，不会中断浏览器里当前已经开始的搜索。")
+        self.clear_queue_button.clicked.connect(self._on_clear_search_queue)
+        search_row.addWidget(self.clear_queue_button, 0)
         layout.addLayout(search_row)
 
         self.gallery_scroll = QScrollArea()
@@ -456,6 +466,22 @@ class MainWindow(QMainWindow):
             #AppRoot QPushButton[role="danger"]:hover {
                 background: #FFE4E6;
             }
+            #QueueClearButton {
+                min-width: 40px;
+                max-width: 40px;
+                min-height: 40px;
+                border-radius: 8px;
+                border: 1px solid #E2E8F0;
+                background: #FFFFFF;
+                color: #64748B;
+                font-size: 18px;
+                font-weight: 600;
+            }
+            #QueueClearButton:hover {
+                background: #F8FAFC;
+                border-color: #CBD5E1;
+                color: #0F172A;
+            }
             #ThemeToggleBtn {
                 min-width: 110px;
             }
@@ -620,6 +646,22 @@ class MainWindow(QMainWindow):
             #AppRoot QPushButton[role="danger"]:hover {
                 background: #4C1D2B;
             }
+            #QueueClearButton {
+                min-width: 40px;
+                max-width: 40px;
+                min-height: 40px;
+                border-radius: 8px;
+                border: 1px solid #334155;
+                background: #1F2937;
+                color: #CBD5E1;
+                font-size: 18px;
+                font-weight: 600;
+            }
+            #QueueClearButton:hover {
+                background: #334155;
+                border-color: #475569;
+                color: #F8FAFC;
+            }
             #LogOutput {
                 background: #0B1220;
                 border: 1px solid #1F2937;
@@ -731,7 +773,7 @@ class MainWindow(QMainWindow):
         self._gallery_last_column_count = column_count
         self._render_gallery_page()
 
-    def _run_worker(self, task, on_result=None, on_finished=None, on_error=None) -> None:
+    def _run_worker(self, task, on_result=None, on_finished=None, on_error=None) -> Worker:
         worker = Worker(task)
         self._workers.add(worker)
         worker.signals.progress.connect(self.append_log)
@@ -746,6 +788,7 @@ class MainWindow(QMainWindow):
 
         worker.signals.finished.connect(_cleanup)
         self.thread_pool.start(worker)
+        return worker
 
     def _handle_worker_error(self, traceback_text: str, on_error=None) -> None:
         self.logger.error("后台任务失败：\n%s", traceback_text)
@@ -1110,18 +1153,65 @@ class MainWindow(QMainWindow):
         self.gallery_search_hint_label.setText("正在检查插件状态并提交任务…")
         self.append_log(f"开始提交插件搜索任务，共 {len(target_images)} 张图片。")
 
-        def task(progress_callback):
+        def task(progress_callback, cancel_event):
             self.bridge_runtime_service.ensure_running(progress_callback)
-            return self.plugin_search_service.queue_search_many(target_images, progress_callback)
+            return self.plugin_search_service.queue_search_many(
+                target_images,
+                progress_callback,
+                cancel_event=cancel_event,
+            )
 
         def on_result(result: dict[str, Any]) -> None:
             queued_count = int(result.get("queued_count") or 0)
             pending_count = result.get("pending_count", 0)
+            if result.get("cancelled"):
+                self.gallery_search_hint_label.setText("已停止继续排队。当前已开始的搜索不会中断。")
+                self.append_log(f"已停止继续提交搜索任务，本次实际入队 {queued_count} 张，待处理队列={pending_count}")
+                return
             self.gallery_search_hint_label.setText("任务已提交。浏览器会继续处理队列。")
             self.append_log(f"搜索任务已提交，共 {queued_count} 张，待处理队列={pending_count}")
+
+        def on_finished() -> None:
+            self.search_button.setEnabled(True)
+            self._active_search_worker = None
+
+        self._active_search_worker = self._run_worker(
+            task,
+            on_result=on_result,
+            on_finished=on_finished,
+        )
+
+    def _on_clear_search_queue(self) -> None:
+        self.clear_queue_button.setEnabled(False)
+        self.gallery_search_hint_label.setText("正在清空排队中的搜索队列…")
+        self.append_log("正在清空排队中的搜索队列。")
+
+        had_active_submission = self._active_search_worker is not None
+        if self._active_search_worker is not None:
+            self._active_search_worker.cancel()
+
+        def task(progress_callback):
+            if had_active_submission:
+                time.sleep(0.35)
+            return self.plugin_search_service.clear_queue(progress_callback)
+
+        def on_result(result: dict[str, Any]) -> None:
+            cleared_count = int(result.get("cleared_count") or 0)
+            pending_count = int(result.get("pending_count") or 0)
+            if cleared_count > 0:
+                self.gallery_search_hint_label.setText(
+                    f"已清空排队中的搜索队列 {cleared_count} 项。当前已开始的搜索不会中断。"
+                )
+                self.append_log(f"已清空排队中的搜索队列 {cleared_count} 项，剩余待处理队列={pending_count}")
+                return
+            self.gallery_search_hint_label.setText("当前没有待清空的搜索队列。")
+            self.append_log("当前没有待清空的搜索队列。")
+
+        def on_finished() -> None:
+            self.clear_queue_button.setEnabled(True)
 
         self._run_worker(
             task,
             on_result=on_result,
-            on_finished=lambda: self.search_button.setEnabled(True),
+            on_finished=on_finished,
         )
